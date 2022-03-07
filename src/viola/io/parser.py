@@ -18,6 +18,12 @@ from viola.io._vcf_parser import (
     read_vcf_delly,
     read_vcf_lumpy,
     read_vcf_gridss,
+    read_vcf_svaba,
+    read_vcf_tiddit,
+    read_vcf_pindel,
+    read_vcf_imsindel,
+    read_vcf_mobster,
+    read_vcf_scanitd,
 )
 pd.set_option('display.max_columns', 10)
 pd.set_option('display.max_colwidth', 30)
@@ -62,6 +68,18 @@ def read_vcf(filepath_or_buffer: Union[str, StringIO], variant_caller: str = "ma
         return read_vcf_lumpy(vcf_reader)
     elif variant_caller == 'gridss':
         return read_vcf_gridss(vcf_reader)
+    elif variant_caller == 'svaba':
+        return read_vcf_svaba(vcf_reader)
+    elif variant_caller == 'tiddit':
+        return read_vcf_tiddit(vcf_reader)
+    elif variant_caller == 'pindel':
+        return read_vcf_pindel(vcf_reader)
+    elif variant_caller == 'imsindel':
+        return read_vcf_imsindel(vcf_reader)
+    elif variant_caller == 'mobster':
+        return read_vcf_mobster(vcf_reader)
+    elif variant_caller == 'scanitd':
+        return read_vcf_scanitd(vcf_reader)
 
     # obtain header informations
     odict_contigs = vcf_reader.contigs
