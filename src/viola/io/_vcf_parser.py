@@ -4,7 +4,7 @@ import numpy as np
 from collections import OrderedDict
 from viola.core.vcf import Vcf
 
-def read_vcf(vcf_reader):
+def read_vcf_tools(vcf_reader):
     metadata = vcf_reader.metadata
     
     #分岐
