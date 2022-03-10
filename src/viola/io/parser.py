@@ -13,18 +13,7 @@ from viola.core.bedpe import Bedpe
 from viola.core.vcf import Vcf
 from viola.core.bed import Bed
 from viola.utils.utils import is_url
-from viola.io._vcf_parser import (
-    read_vcf_manta,
-    read_vcf_delly,
-    read_vcf_lumpy,
-    read_vcf_gridss,
-    read_vcf_svaba,
-    read_vcf_tiddit,
-    read_vcf_pindel,
-    read_vcf_imsindel,
-    read_vcf_mobster,
-    read_vcf_scanitd,
-)
+from viola.io._vcf_parser import read_vcf_tools
 pd.set_option('display.max_columns', 10)
 pd.set_option('display.max_colwidth', 30)
 pd.set_option('display.width', 1000) 
