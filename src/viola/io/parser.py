@@ -49,26 +49,9 @@ def read_vcf(filepath_or_buffer: Union[str, StringIO], variant_caller: str = "ma
         vcf_reader = vcf.Reader(filepath_or_buffer)
         #raise TypeError("should be file or buffer")
 
-    if variant_caller == 'manta':
-        return read_vcf_manta(vcf_reader)
-    elif variant_caller == 'delly':
-        return read_vcf_delly(vcf_reader)
-    elif variant_caller == 'lumpy':
-        return read_vcf_lumpy(vcf_reader)
-    elif variant_caller == 'gridss':
-        return read_vcf_gridss(vcf_reader)
-    elif variant_caller == 'svaba':
-        return read_vcf_svaba(vcf_reader)
-    elif variant_caller == 'tiddit':
-        return read_vcf_tiddit(vcf_reader)
-    elif variant_caller == 'pindel':
-        return read_vcf_pindel(vcf_reader)
-    elif variant_caller == 'imsindel':
-        return read_vcf_imsindel(vcf_reader)
-    elif variant_caller == 'mobster':
-        return read_vcf_mobster(vcf_reader)
-    elif variant_caller == 'scanitd':
-        return read_vcf_scanitd(vcf_reader)
+    variant_caller = ['manta', 'delly', 'lumpy', 'gridss', 'svaba', 'tiddit', 'pindel', 'imsindel', 'mobster', 'scanitd']    
+    read_vcf_manta(vcf_reader, variant_caller)
+    
 
     # obtain header informations
     odict_contigs = vcf_reader.contigs
