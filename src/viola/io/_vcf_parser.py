@@ -4,20 +4,10 @@ import numpy as np
 from collections import OrderedDict
 from viola.core.vcf import Vcf
 
-def read_vcf_tools(vcf_reader):
+def read_vcf_tools(vcf_reader, variant_caller_name):
     metadata = vcf_reader.metadata
-    
-    #分岐
-    metadata['variantcaller'] = 'manta'
-  　　　　metadata['variantcaller'] = 'delly'
-    metadata['variantcaller'] = 'gridss'
-    
-    """
-    split INV lines.
-    INFO=SU is modified according to the INFO=STRANDS.
-    """
-    metadata['variantcaller'] = 'lumpy' #This is empty DataFrame!
-    
+    metadata['variantcaller'] = variant_caller_name
+     
     # obtain header informations
     odict_contigs = vcf_reader.contigs
     df_contigs_meta = pd.DataFrame(odict_contigs, index=('id', 'length')).T.reset_index(drop=True)
@@ -27,24 +17,25 @@ def read_vcf_tools(vcf_reader):
     df_alts_meta = pd.DataFrame(odict_alts, index=('id', 'description')).T.reset_index(drop=True)
     
     ###分岐
-    #Manta,Gridss
     # obtain info field information
-    odict_infos = vcf_reader.infos
-    df_infos_meta = pd.DataFrame(odict_infos, index=('id', 'number', 'type', 'description', 'source', 'version')).T.reset_index(drop=True)
-    
     """
     DELLY：　Replace table name SVLEN into SVLENORG to avoid name conflict.
     """
     ## Delly
-    df_infos_meta.loc[df_infos_meta['id'] == 'SVLEN', 'id'] = 'SVLENORG'
-    df_infos_meta = df_infos_meta.append({'id':'SVLEN', 'number':None, 'type':'Integer', 'description':'Length of SV', 'source':None, 'version':None}, ignore_index=True)
+    if variant_caller_name == 'delly':
+        df_infos_meta.loc[df_infos_meta['id'] == 'SVLEN', 'id'] = 'SVLENORG'
+        df_infos_meta = df_infos_meta.append({'id':'SVLEN', 'number':None, 'type':'Integer', 'description':'Length of SV', 'source':None, 'version':None}, ignore_index=True)
     ## /Delly
     
     ##lumpy
-    # obtain info field information
-    df_suorg = pd.DataFrame([['SUORG', None, 'Integer', 'Original value of Lumpy SU', None, None]], columns = ('id', 'number', 'type', 'description', 'source', 'version'))
-    df_infos_meta = pd.concat([df_infos_meta, df_suorg], ignore_index=True)
+    elif variant_caller_name == 'lumpy':
+        df_suorg = pd.DataFrame([['SUORG', None, 'Integer', 'Original value of Lumpy SU', None, None]], columns = ('id', 'number', 'type', 'description', 'source', 'version'))
+        df_infos_meta = pd.concat([df_infos_meta, df_suorg], ignore_index=True)
     ## /lumpy
+    
+    else:
+        odict_infos = vcf_reader.infos
+        df_infos_meta = pd.DataFrame(odict_infos, index=('id', 'number', 'type', 'description', 'source', 'version')).T.reset_index(drop=True)
 
     # obtain FORMAT informations
     odict_formats = vcf_reader.formats
@@ -74,32 +65,34 @@ def read_vcf_tools(vcf_reader):
     for record in vcf_reader:
         dict_row = {}
         # ex: Record(CHROM=chr1, POS=9163435, REF=G, ALT=[<DUP:TANDEM>])
-        ###Manta,Delly,Gridss
-        row_ID = record.ID
-        row_CHROM1 = record.CHROM
-        row_POS1 = record.POS
-        row_REF = record.REF
-        row_ALT = record.ALT[0] # This operation is safe when parsing manta vcf files, but potential cause of information loss in another callers.
-        row_QUAL = record.QUAL
-        
         ###Lumpy
-        row_SVTYPE = record.INFO['SVTYPE']
-        if row_SVTYPE == 'INV':
-            is_inv = True
-        else:
-            is_inv = False
+        if variant_caller_name == 'lumpy':
+            
+            row_SVTYPE = record.INFO['SVTYPE']
+            if row_SVTYPE == 'INV':
+                is_inv = True
+            else:
+                is_inv = False
         
-        if is_inv:
-            row_ID = record.ID
-            row_ID1 = str(record.ID) + '_1'
-            row_ID2 = str(record.ID) + '_2'
+            if is_inv:
+                row_ID = record.ID
+                row_ID1 = str(record.ID) + '_1'
+                row_ID2 = str(record.ID) + '_2'
+            else:
+                row_ID = record.ID
+                row_CHROM1 = record.CHROM
+                row_POS1 = record.POS
+                row_REF = record.REF
+                row_ALT = record.ALT[0] # This operation is safe when parsing manta vcf files, but potential cause of information loss in another callers.
+                row_QUAL = record.QUAL
+        
         else:
             row_ID = record.ID
             row_CHROM1 = record.CHROM
             row_POS1 = record.POS
             row_REF = record.REF
             row_ALT = record.ALT[0] # This operation is safe when parsing manta vcf files, but potential cause of information loss in another callers.
-            row_QUAL = record.QUAL              
+            row_QUAL = record.QUAL          
             
         #####FILTER
         ls_filter = record.FILTER
@@ -108,110 +101,118 @@ def read_vcf_tools(vcf_reader):
         elif len(ls_filter) == 0:
             ls_filter = ['PASS'] 
         row_FILTER = ls_filter
-        
-        ###Manta,Delly,Gridss
-        for filter_ in row_FILTER:
-            ls_filters.append({'id': row_ID, 'filter': filter_})
-            
         ###Lumpy
-        for filter_ in row_FILTER:
-            if is_inv:
-                ls_filters.append({'id': row_ID1, 'filter': filter_})
-                ls_filters.append({'id': row_ID2, 'filter': filter_})
-            else:
+        if variant_caller_name == 'lumpy':
+            for filter_ in row_FILTER:
+                if is_inv:
+                    ls_filters.append({'id': row_ID1, 'filter': filter_})
+                    ls_filters.append({'id': row_ID2, 'filter': filter_})
+                else:
+                    ls_filters.append({'id': row_ID, 'filter': filter_})
+         ###/Lumpy
+        
+        else:
+            for filter_ in row_FILTER:
                 ls_filters.append({'id': row_ID, 'filter': filter_})
+        
         #####/FILTER           
         
         #####INFO
         row_INFO = record.INFO
         row_SVTYPE = row_INFO['SVTYPE']
-        
-        ##### delly: get svlen
-        if row_SVTYPE == 'BND':
-            svlen = 0
-        elif row_SVTYPE == 'TRA':
-            svlen = 0
-        elif row_SVTYPE == 'DEL':
-            svlen = row_POS1 - row_INFO['END']
-        elif row_SVTYPE == 'DUP':
-            svlen = row_INFO['END'] - row_POS1
-        elif row_SVTYPE == 'INV':
-            svlen = row_INFO['END'] - row_POS1
-        else:
-            svlen = 0
-        ##### /delly: get svlen    
-        
-        ###Manta,Gridss
-        for info in df_infos_meta.id:
-            values = row_INFO.get(info, 'none')
-            if values == 'none':
-                if info == 'CIPOS':
-                    dict_infos['CIPOS'].append({'id': row_ID, 'value_idx': 0, 'cipos': 0})
-                    dict_infos['CIPOS'].append({'id': row_ID, 'value_idx': 1, 'cipos': 0})
-                continue
-                
-        ###Delly
-        for info in df_infos_meta.id:
-            if info == 'SVLENORG':
-                values = row_INFO.get('SVLEN', 'none')
-            elif info == 'SVLEN':
-                values = svlen
-            else:
-                values = row_INFO.get(info, 'none')
-            if values == 'none':
-                continue
-        
-        ###Manta, Delly, Gridss
-            if not isinstance(values, list):
-                values = [values]
-            ls_keys = ['id', 'value_idx', info.lower()] 
-            for idx, value in enumerate(values):
-                ls_value = [row_ID, idx, value]
-                dict_a_info = {k: v for k, v in zip(ls_keys, ls_value)}
-                dict_infos[info].append(dict_a_info)
-        
+       
         ###Lumpy
-        row_INFO = record.INFO
-        for info in df_infos_meta.id:
-            values = row_INFO.get(info, 'none')
-            if values == 'none':
-                if info == 'EVENT' and is_inv:
-                    values = row_ID
+        if variant_caller_name == 'lumpy'
+            row_INFO = record.INFO
+            for info in df_infos_meta.id:
+                values = row_INFO.get(info, 'none')
+                if values == 'none':
+                    if info == 'EVENT' and is_inv:
+                        values = row_ID
+                    else:
+                        continue
+                if not isinstance(values, list):
+                    values = [values]
+                ls_keys = ['id', 'value_idx', info.lower()] 
+                if is_inv:
+                    for idx, value in enumerate(values):
+                        if info == 'SU':
+                            value = row_INFO['STRANDS'][0].split(':')[1]
+                            value = int(value)
+                        elif info == 'STRANDS':
+                            if idx == 1: continue
+                        ls_value1 = [row_ID1, idx, value]
+                        dict_a_info1 = {k: v for k, v in zip(ls_keys, ls_value1)}
+                        dict_infos[info].append(dict_a_info1)
+                    for idx, value in enumerate(values):
+                        if info == 'SU':
+                            value = row_INFO['STRANDS'][1].split(':')[1]
+                            value = int(value)
+                        elif info == 'STRANDS':
+                            if idx == 0: continue
+                            idx = 0
+                        ls_value2 = [row_ID2, idx, value]
+                        dict_a_info2 = {k: v for k, v in zip(ls_keys, ls_value2)}
+                        dict_infos[info].append(dict_a_info2) 
                 else:
-                    continue
-            if not isinstance(values, list):
-                values = [values]
-            ls_keys = ['id', 'value_idx', info.lower()] 
+                    for idx, value in enumerate(values):
+                        ls_value = [row_ID, idx, value]
+                        dict_a_info = {k: v for k, v in zip(ls_keys, ls_value)}
+                        dict_infos[info].append(dict_a_info)
+        
             if is_inv:
-                for idx, value in enumerate(values):
-                    if info == 'SU':
-                        value = row_INFO['STRANDS'][0].split(':')[1]
-                        value = int(value)
-                    elif info == 'STRANDS':
-                        if idx == 1: continue
-                    ls_value1 = [row_ID1, idx, value]
-                    dict_a_info1 = {k: v for k, v in zip(ls_keys, ls_value1)}
-                    dict_infos[info].append(dict_a_info1)
-                for idx, value in enumerate(values):
-                    if info == 'SU':
-                        value = row_INFO['STRANDS'][1].split(':')[1]
-                        value = int(value)
-                    elif info == 'STRANDS':
-                        if idx == 0: continue
-                        idx = 0
-                    ls_value2 = [row_ID2, idx, value]
-                    dict_a_info2 = {k: v for k, v in zip(ls_keys, ls_value2)}
-                    dict_infos[info].append(dict_a_info2) 
-              else:
+                suorg = row_INFO['SU'][0]
+                dict_infos['SUORG'].append({'id': row_ID1, 'value_idx': 0, 'suorg': suorg})
+                dict_infos['SUORG'].append({'id': row_ID2, 'value_idx': 0, 'suorg': suorg})
+       
+        elif variant_caller_name == 'delly':
+        ##### delly: get svlen
+            if row_SVTYPE == 'BND':
+                svlen = 0
+            elif row_SVTYPE == 'TRA':
+                svlen = 0
+            elif row_SVTYPE == 'DEL':
+                svlen = row_POS1 - row_INFO['END']
+            elif row_SVTYPE == 'DUP':
+                svlen = row_INFO['END'] - row_POS1
+            elif row_SVTYPE == 'INV':
+                svlen = row_INFO['END'] - row_POS1
+            else:
+                svlen = 0
+        ##### /delly: get svlen
+            for info in df_infos_meta.id:
+                if info == 'SVLENORG':
+                    values = row_INFO.get('SVLEN', 'none')
+                elif info == 'SVLEN':
+                    values = svlen
+                else:
+                    values = row_INFO.get(info, 'none')
+                if values == 'none':
+                    continue
+                if not isinstance(values, list):
+                    values = [values]
+                ls_keys = ['id', 'value_idx', info.lower()] 
                 for idx, value in enumerate(values):
                     ls_value = [row_ID, idx, value]
                     dict_a_info = {k: v for k, v in zip(ls_keys, ls_value)}
                     dict_infos[info].append(dict_a_info)
+        ###Delly
         
-        if is_inv:
-            suorg = row_INFO['SU'][0]
-            dict_infos['SUORG'].append({'id': row_ID1, 'value_idx': 0, 'suorg': suorg})
-            dict_infos['SUORG'].append({'id': row_ID2, 'value_idx': 0, 'suorg': suorg})
+        else:    
+            for info in df_infos_meta.id:
+                values = row_INFO.get(info, 'none')
+                if values == 'none':
+                    if info == 'CIPOS':
+                        dict_infos['CIPOS'].append({'id': row_ID, 'value_idx': 0, 'cipos': 0})
+                        dict_infos['CIPOS'].append({'id': row_ID, 'value_idx': 1, 'cipos': 0})
+                    continue
+                if not isinstance(values, list):
+                    values = [values]
+                ls_keys = ['id', 'value_idx', info.lower()] 
+                for idx, value in enumerate(values):
+                    ls_value = [row_ID, idx, value]
+                    dict_a_info = {k: v for k, v in zip(ls_keys, ls_value)}
+                    dict_infos[info].append(dict_a_info)
         #####/INFO                                         
         
         ###POS
@@ -226,23 +227,26 @@ def read_vcf_tools(vcf_reader):
         elif row_SVTYPE == 'INV': # manta, delly, Gridss-specific operation
             row_CHROM2 = row_CHROM1
             row_POS2 = row_INFO['END']
+            if variant_caller_name == 'manta':
             # Manta
-            if row_INFO.get('INV3', False):
-                row_STRANDs = '+'
-            else:
-                row_POS1 += 1
-                row_POS2 += 1
-                row_STRANDs = '-'
+                if row_INFO.get('INV3', False):
+                    row_STRANDs = '+'
+                else:
+                    row_POS1 += 1
+                    row_POS2 += 1
+                    row_STRANDs = '-'
             # /Manta
             
             # delly
-            if row_INFO['CT'] == '3to3':
-                row_STRANDs = '+'
-            else:
-                row_STRANDs = '-'
+            elif variant_caller_name == 'delly':
+                if row_INFO['CT'] == '3to3':
+                    row_STRANDs = '+'
+                else:
+                    row_STRANDs = '-'
             # /delly
-                          
-            ###Manta, Delly, Gridss
+            else:
+                pass
+                    
             row_STRAND1, row_STRAND2 = row_STRANDs, row_STRANDs
             
         elif row_SVTYPE == 'DEL':
@@ -262,35 +266,38 @@ def read_vcf_tools(vcf_reader):
             row_STRAND1 = '.'
             row_STRAND2 = '.'            
             
-        ###Manta, lumpy, Gridss(1行)
-        row_SVTYPE = row_SVTYPE
-        
-        ls_pos.append({
-                'id': row_ID, 
-                'chrom1': row_CHROM1, 
-                'pos1': row_POS1, 
-                'chrom2': row_CHROM2, 
-                'pos2': row_POS2, 
-                'strand1': row_STRAND1, 
-                'strand2': row_STRAND2,
-                'ref': row_REF,
-                'alt': row_ALT,
-                'qual': row_QUAL,
-                'svtype': row_SVTYPE
-            })
+        ###delly以外
+        if variant_caller_name != 'delly':
+            row_SVTYPE = row_SVTYPE
         
         ###Lumpy
-        if is_inv:
-            ls_pos.append({'id': row_ID1, 'chrom1': row_CHROM1, 'pos1': row_POS1, 
-                    'chrom2': row_CHROM2, 'pos2': row_POS2, 'strand1': '+', 
-                    'strand2': '+', 'ref': row_REF, 'alt': row_ALT,
-                    'qual': row_QUAL, 'svtype': row_SVTYPE
-                })
-            ls_pos.append({'id': row_ID2, 'chrom1': row_CHROM1, 'pos1': row_POS1+1, 
-                    'chrom2': row_CHROM2, 'pos2': row_POS2+1, 'strand1': '-', 
-                    'strand2': '-', 'ref': row_REF, 'alt': row_ALT,
-                    'qual': row_QUAL, 'svtype': row_SVTYPE
-                })
+        if variant_caller_name == 'lumpy':
+            if is_inv:
+                ls_pos.append({'id': row_ID1, 'chrom1': row_CHROM1, 'pos1': row_POS1, 
+                        'chrom2': row_CHROM2, 'pos2': row_POS2, 'strand1': '+', 
+                        'strand2': '+', 'ref': row_REF, 'alt': row_ALT,
+                        'qual': row_QUAL, 'svtype': row_SVTYPE
+                    })
+                ls_pos.append({'id': row_ID2, 'chrom1': row_CHROM1, 'pos1': row_POS1+1, 
+                        'chrom2': row_CHROM2, 'pos2': row_POS2+1, 'strand1': '-', 
+                        'strand2': '-', 'ref': row_REF, 'alt': row_ALT,
+                        'qual': row_QUAL, 'svtype': row_SVTYPE
+                    })
+            else:
+                ls_pos.append({
+                        'id': row_ID, 
+                        'chrom1': row_CHROM1, 
+                        'pos1': row_POS1, 
+                        'chrom2': row_CHROM2, 
+                        'pos2': row_POS2, 
+                        'strand1': row_STRAND1, 
+                        'strand2': row_STRAND2,
+                        'ref': row_REF,
+                        'alt': row_ALT,
+                        'qual': row_QUAL,
+                        'svtype': row_SVTYPE
+                    }) 
+        
         else:
             ls_pos.append({
                     'id': row_ID, 
@@ -304,8 +311,7 @@ def read_vcf_tools(vcf_reader):
                     'alt': row_ALT,
                     'qual': row_QUAL,
                     'svtype': row_SVTYPE
-                }) 
-        
+                })
         ###/POS       
         
         ####FORMAT
@@ -318,17 +324,17 @@ def read_vcf_tools(vcf_reader):
                 values = eval('a_sample.data.' + str(a_format))
                 if not isinstance(values, list):
                     values = [values]
-                
-                ###Manta, Delly
-                for value_idx in range(len(values)):
-                    ls_formats.append([row_ID, a_sample.sample, a_format, value_idx, values[value_idx]])
-        
                 ###Lumpy
-                for value_idx in range(len(values)):
-                    if is_inv:
-                        ls_formats.append([row_ID1, a_sample.sample, a_format, value_idx, values[value_idx]])
-                        ls_formats.append([row_ID2, a_sample.sample, a_format, value_idx, values[value_idx]])
-                    else:
+                if variant_caller_name == 'lumpy':
+                    for value_idx in range(len(values)):
+                        if is_inv:
+                            ls_formats.append([row_ID1, a_sample.sample, a_format, value_idx, values[value_idx]])
+                            ls_formats.append([row_ID2, a_sample.sample, a_format, value_idx, values[value_idx]])
+                        else:
+                            ls_formats.append([row_ID, a_sample.sample, a_format, value_idx, values[value_idx]])
+                       
+                else:
+                    for value_idx in range(len(values)):
                         ls_formats.append([row_ID, a_sample.sample, a_format, value_idx, values[value_idx]])
         
         df_formats_each_record = pd.DataFrame(ls_formats)
@@ -349,8 +355,7 @@ def read_vcf_tools(vcf_reader):
             df_a_info = pd.DataFrame(dict_infos[info])
         ls_df_infos.append(df_a_info)
     odict_df_infos = OrderedDict([(k, v) for k, v in zip(df_infos_meta.id, ls_df_infos)])
-
-    ###Manta, Gridss
+    
     #### Generate CIEND table by merging MATEID and CIPOS
     if 'MATEID' in odict_df_infos:
         df_mateid = odict_df_infos['MATEID']
@@ -360,10 +365,14 @@ def read_vcf_tools(vcf_reader):
         df_merged.columns = ['id', 'value_idx', 'ciend']
         
         #Manta
-        df_ciend = odict_df_infos['CIEND']
-        odict_df_infos['CIEND'] = pd.concat([df_ciend, df_merged], ignore_index=True)
+        if variant_caller_name == 'manta':
+            df_ciend = odict_df_infos['CIEND']
+            odict_df_infos['CIEND'] = pd.concat([df_ciend, df_merged], ignore_index=True)
         #Gridss
-        odict_df_infos['CIEND'] = df_merged
+        elif variant_caller_name == 'gridss':
+            odict_df_infos['CIEND'] = df_merged
+        else:
+            pass
     #### /Generate CIEND table by merging MATEID and CIPOS
 
     ###/INFO  
@@ -384,14 +393,18 @@ def read_vcf_tools(vcf_reader):
         columns = ['id', 'sample', 'format', 'value_idx', 'value']
         df_formats.columns = columns
     ###/FORMAT
-   
+
     ###Lumpy
     ############## Generate contigs_meta ####################
-    arr_contigs = np.append(df_pos['chrom1'].values,  df_pos['chrom2'].values)
-    arr_contigs = np.unique(arr_contigs)
-    arr_contigs_length = np.repeat('.', len(arr_contigs))
-    df_contigs_meta = pd.DataFrame({'id': arr_contigs, 'length': arr_contigs_length})
-    odict_df_headers['contigs_meta'] = df_contigs_meta
+    if variant_caller_name == 'lumpy':   
+        arr_contigs = np.append(df_pos['chrom1'].values,  df_pos['chrom2'].values)
+        arr_contigs = np.unique(arr_contigs)
+        arr_contigs_length = np.repeat('.', len(arr_contigs))
+        df_contigs_meta = pd.DataFrame({'id': arr_contigs, 'length': arr_contigs_length})
+        odict_df_headers['contigs_meta'] = df_contigs_meta
 
-    args = [df_pos, df_filters, odict_df_infos, df_formats, odict_df_headers, metadata]
-    return Vcf(*args)
+        args = [df_pos, df_filters, odict_df_infos, df_formats, odict_df_headers, metadata]
+        return Vcf(*args)
+    
+    else:
+        pass
