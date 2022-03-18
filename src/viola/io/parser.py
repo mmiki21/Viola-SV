@@ -50,7 +50,7 @@ def read_vcf(filepath_or_buffer: Union[str, StringIO], variant_caller: str = "ma
         #raise TypeError("should be file or buffer")
 
     variant_caller = ['manta', 'delly', 'lumpy', 'gridss', 'svaba', 'tiddit', 'pindel', 'imsindel', 'mobster', 'scanitd']    
-    read_vcf_manta(vcf_reader, variant_caller)
+    read_vcf_(vcf_reader, variant_caller)
     
 
     # obtain header informations
